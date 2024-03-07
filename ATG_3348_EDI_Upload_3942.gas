@@ -1,0 +1,339 @@
+Program.Sub.ScreenSU.Start
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+
+Variable.UDT.uEDI.Define("Item",String)
+Variable.UDT.uEDI.Define("Desc",String)
+Variable.UDT.uEDI.Define("Order",String)
+Variable.UDT.uEDI.Define("Line",String)
+Variable.UDT.uEDI.Define("DelivaryDate",String)
+Variable.UDT.uEDI.Define("RevLevel",String)
+Variable.UDT.uEDI.Define("ShipTo",String)
+Variable.UDT.uEDI.Define("ForecastFlag",String)
+Variable.UDT.uEDI.Define("PalnnedFlag",String)
+Variable.Global.sFile.Declare(String)
+Variable.uGlobal.uEDI.Declare("uEDI")
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+'Quote Number: 3942
+'Customer: Name T.R. Machine Inc.
+'Reference: Number TRM010-72420120958-6
+
+'Title: EDI Forecast Upload
+'Description: Load a spreadsheet of order information into Global Shop’s EDI system.
+
+'Specification: Have an opening File Browser to let the user select the file to be loaded.
+'F.Intrinsic.UI.ShowOpenFileDialog("","xls|*.xls”,Initial File Folder,string return)
+'- Read the spreadsheet
+'F.Automation.MSExcel.ReadSpreadsheet(file, max col, max row, return)
+'The sheet delimiter is &^&, the row delimiter is $!$, and the column delimiter is *!*
+'Clear EDI_Header and EDI_Lines before creating new records.
+
+'Read the following column information form the sheet:
+'C: Item#
+'D: Item Description
+'I: Order#
+'J: Line
+'M: Dlvry Dte
+'Q: Revision Level (part Rev)
+'T: Ship To
+
+'Ignore lines with DLVRY DTE =“Perm P.O.”
+
+'Clear EDI_Header and EDI_Lines before creating new records.
+
+
+V.Local.sError.Declare(String)
+
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+
+'Upload .xls File
+F.Intrinsic.UI.ShowOpenFileDialog("","xls|*.xls",,V.Global.sFile)
+F.Intrinsic.Debug.SetLA(V.Global.sFile)
+
+'Load required Col in file to a UDT
+F.Intrinsic.Control.CallSub(File_to_udt)
+
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: ATG_EDI_Upload.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.Debug.SetLA(V.Local.sError)
+Function.Intrinsic.Control.EndIf
+
+Program.Sub.Main.End
+
+Program.Sub.File_To_UDT.Start
+V.Local.sError.Declare(String)
+V.Local.bFound.Declare
+V.Local.iRow.Declare
+V.Local.iSheet.Declare
+V.Local.iUR.Declare
+V.Local.sCol.Declare
+V.Local.sXls.Declare
+V.Local.sRow.Declare
+
+F.Intrinsic.Control.SetErrorHandler("File_To_UDT_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.uGlobal.uEDI.Redim(-1,-1)
+
+F.Intrinsic.UI.InvokeWaitDialog("Loading . . .","EDI Upload")
+F.Intrinsic.UI.ChangeWaitStatus("Loading . . .",0)
+
+'Check for MS Excel or OOCalc
+F.Intrinsic.Debug.SetLA("Checking for MS Excel or OOCalc.")
+F.Automation.MSExcel.CheckPresence(V.Local.bFound)
+F.Intrinsic.Control.If(V.Local.bFound,=,False)
+	F.Intrinsic.Debug.SetLA("MS Excel not found.")
+	F.Automation.OOGeneral.CheckPresence(V.Local.bFound)
+	F.Intrinsic.Control.If(V.Local.bFound,=,False)
+		F.Intrinsic.Debug.SetLA("MS Excel or OOCalc are not found.")
+		F.Intrinsic.UI.Msgbox("MS Excel or OOCalc are not found. Selected file can not be processed","EDI Forecast Upload")
+		F.Intrinsic.Control.End
+	F.Intrinsic.Control.Else
+		F.Intrinsic.Debug.SetLA("Read .xls sheet with OO Calc")
+		F.Automation.OOCalc.ReadSpreadsheet(V.Global.sFile,True,20,500,V.Local.sXls)
+	F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.Else
+	F.Intrinsic.Debug.SetLA("Read .xls sheet with MS Excel")
+	F.Automation.MSExcel.ReadSpreadsheet(V.Global.sFile,20,500,V.Local.sXls)
+F.Intrinsic.Control.EndIf
+
+'Split Sheet
+F.Intrinsic.String.Split(V.Local.sXls,"&^&",V.Local.sXls)
+F.Intrinsic.Control.For(V.Local.iSheet,0,V.Local.sXls.UBound,1)
+	'Split Rows
+	F.Intrinsic.String.Split(V.Local.sXls(v.Local.iSheet),"$!$",V.Local.sRow)
+	F.Intrinsic.Control.For(V.Local.iRow,1,V.Local.sRow.UBound,1)
+		'Change WaitStatus
+		F.Intrinsic.Control.If(V.Local.iRow,<,46)
+			F.Intrinsic.UI.ChangeWaitStatus("Loading . . .",V.Local.iRow)
+		F.Intrinsic.Control.EndIf
+
+		'Split Columns
+		F.Intrinsic.String.Split(V.Local.sRow(v.Local.iRow),"*!*",V.Local.sCol)
+		'Save Columns to UDT
+		F.Intrinsic.Control.If(V.uGlobal.uEDI.UBound,=,-1)
+			V.uGlobal.uEDI.Redim(0,0)
+		F.Intrinsic.Control.Else
+			F.Intrinsic.Math.Sub(V.Local.iRow,1,V.Local.iUR)
+			V.uGlobal.uEDI.RedimPreserve(0,V.Local.iUR)
+		F.Intrinsic.Control.EndIf
+		V.uGlobal.uEDI(v.Local.iUR)!Item.Set(V.Local.sCol(2))
+		V.uGlobal.uEDI(v.Local.iUR)!Desc.Set(V.Local.sCol(3))
+		V.uGlobal.uEDI(v.Local.iUR)!Order.Set(V.Local.sCol(8))
+		V.uGlobal.uEDI(v.Local.iUR)!Line.Set(V.Local.sCol(9))
+		V.uGlobal.uEDI(v.Local.iUR)!DelivaryDate.Set(V.Local.sCol(12))
+		V.uGlobal.uEDI(v.Local.iUR)!RevLevel.Set(V.Local.sCol(16))
+		V.uGlobal.uEDI(v.Local.iUR)!ShipTo.Set(V.Local.sCol(19))
+		'Fill Planned Flag ;Set Flag_Planned =P if LINE<>0, DLVRY DTE<>'Perm P.O.', ORDER# <>'PLNND'
+		F.Intrinsic.Control.If(V.Local.sCol(9),<>,0)
+			F.Intrinsic.Control.If(V.Local.sCol(12).Trim,<>,"PERM P.O.")
+				F.Intrinsic.Control.If(V.Local.sCol(8).Trim,<>,"PLNND")
+					V.uGlobal.uEDI(v.Local.iUR)!PalnnedFlag.Set("P")
+				F.Intrinsic.Control.EndIf
+			F.Intrinsic.Control.EndIf
+		F.Intrinsic.Control.EndIf
+	F.Intrinsic.Control.Next(V.Local.iRow)
+F.Intrinsic.Control.Next(V.Local.iSheet)
+
+
+'Fill Forecast Flag
+F.Intrinsic.Debug.SetLA("Set Forecast Flag to 'F' If Order#='PLNND'")
+F.Intrinsic.Variable.UDTMultiSeekSet(V.uGlobal.uEDI!Order,"PLNND",V.uGlobal.uEDI!ForecastFlag,"F")
+'Ignore lines with DLVRY DTE ="Perm P.O."
+F.Intrinsic.Debug.SetLA("Flag UDT Elements with with DLVRY DTE =PermP.O. For Deletion")
+F.Intrinsic.Variable.UDTMultiFlag(V.uGlobal.uEDI!DelivaryDate,"PERM P.O.")
+F.Intrinsic.Variable.UDTDeleteFlagged(V.uGlobal.uEDI)
+'Sort Elements of a UDT
+F.Intrinsic.Variable.UDTMultiQuickSort(V.uGlobal.uEDI!Item,False,V.uGlobal.uEDI!ShipTo,False)
+
+F.Intrinsic.UI.ChangeWaitStatus("Loading . . .",50)
+
+'Open DB Connection
+F.ODBC.Connection!Con.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass)
+'Save to EDI
+F.Intrinsic.Control.CallSub(Save_to_edi)
+F.ODBC.Connection!Con.Close
+
+F.Intrinsic.UI.CloseWaitDialog
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("File_To_UDT_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: ATG_EDI_Upload.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.Debug.SetLA(V.Local.sError)
+Function.Intrinsic.Control.EndIf
+
+Program.Sub.File_To_UDT.End
+
+Program.Sub.Save_To_EDI.Start
+V.Local.sError.Declare(String)
+V.Local.bHeader.Declare
+V.Local.iCt.declare
+V.Local.iLineSeq.Declare
+V.Local.iWait.Declare(Long,50)
+V.Local.sBuyer.Declare
+V.Local.sBuyerPart.Declare
+V.Local.sDateShipped.Declare
+V.Local.sLineSeq.Declare
+V.Local.sLoc.Declare
+V.Local.sMQDInfo.Declare
+V.Local.sPrevPrtShp.Declare
+V.Local.sPrtShp.Declare
+V.Local.sShipID.Declare
+V.Local.sSql.Declare
+
+F.Intrinsic.Control.SetErrorHandler("Save_To_EDI_Err")
+F.Intrinsic.Control.ClearErrors
+
+'Clear EDI_Header and EDI_Lines before creating new records
+F.Intrinsic.Debug.SetLA("Clearing EDI_Header and EDI_Lines.")
+V.Local.sSql.Set("Delete from EDI_HEADER")
+F.ODBC.Connection!Con.Execute(V.Local.sSql)
+V.Local.sSql.Set("Delete from EDI_LINES")
+F.ODBC.Connection!Con.Execute(V.Local.sSql)
+
+'Get Cust Details from Cust_Xref
+V.Local.sShipID.Set("select * from CUST_XREF Where Ltrim(Ucase(Customer)) = 'TAYLO'")
+F.ODBC.Connection!Con.OpenLocalRecordsetRO("rstCust",V.Local.sShipID)
+F.Intrinsic.Control.If(V.ODBC.Con!rstCust.EOF,=,False)
+	V.Local.sBuyer.Set(V.ODBC.Con!rstCust.FieldVal!ID)
+	V.Local.sLoc.Set(V.ODBC.Con!rstCust.FieldVal!LOC)
+F.Intrinsic.Control.EndIf
+F.ODBC.Con!rstCust.Close
+V.Local.sBuyer.Set(V.Local.sBuyer.Trim)
+V.Local.sLoc.Set(V.Local.sLoc.Trim)
+
+V.Local.sSql.Set("select * from EDI_HEADER")
+'F.ODBC.Connection!Con.OpenLocalRecordsetRW("rstHDR",V.Local.sSql)
+'F.Intrinsic.Control.If(V.ODBC.Con!rstHDR.EOF,=,True)
+F.ODBC.Connection!Con.OpenLocalRecordsetRW("rstHDRNew",V.Local.sSql)
+F.Intrinsic.Control.If(V.ODBC.Con!rstHDRNew.EOF,=,True)
+
+	'Save to EDI tables
+	F.Intrinsic.Control.For(V.Local.iCt,0,V.uGlobal.uEDI.UBound,1)
+	
+		'Set Part/Item - Shipto
+		F.Intrinsic.String.Concat(V.uGlobal.uEDI(v.Local.iCt)!Item,"-",V.uGlobal.uEDI(v.Local.iCt)!ShipTo,V.Local.sPrtShp)
+		
+		F.Intrinsic.Control.If(V.Local.sPrtShp,<>,V.Local.sPrevPrtShp)
+			'Change Wait status
+			F.Intrinsic.Math.Add(V.Local.iWait,1,V.Local.iWait)
+			F.Intrinsic.UI.ChangeWaitStatus("Loading . . .",V.Local.iWait)
+			
+			V.Local.sDateShipped.Set(V.uGlobal.uEDI(v.Local.iCt)!DelivaryDate)
+			F.Intrinsic.Control.If(V.uGlobal.uEDI(v.Local.iCt)!ShipTo.Trim,=,"SO BELOIT")
+				V.Local.sShipID.Set("000001")
+			F.Intrinsic.Control.Else
+				V.Local.sShipID.Set(V.Local.sloc)
+			F.Intrinsic.Control.endif
+			
+			F.Intrinsic.String.Concat("select * from EDI_HEADER where TRANS = '850' and BUYER_ID = '",V.Local.sBuyer,"' and PO_NUMBER = '",V.uGlobal.uEDI(v.Local.iCt)!Order,"' and SHIPTO_CODE = '' and DATE_SHIPPED = '",V.Local.sDateShipped,"' and HEADER_SEQUENCE = '000' and  LINE_NO = '000'",V.Local.sSql)
+			F.ODBC.Connection!Con.OpenLocalRecordsetRW("rstHDR",V.Local.sSql)
+			F.Intrinsic.Control.If(V.ODBC.Con!rstHDR.EOF,=,True)
+				V.Local.bHeader.Set(True)
+				'EDI_Header
+				F.ODBC.Con!rstHDR.AddNew
+				F.ODBC.Con!rstHDR.Set!TRANS("850")
+				F.ODBC.Con!rstHDR.Set!BUYER_ID(V.Local.sBuyer)
+				F.ODBC.Con!rstHDR.Set!PO_NUMBER(V.uGlobal.uEDI(v.Local.iCt)!Order)
+				F.ODBC.Con!rstHDR.Set!HEADER_SEQUENCE("000")
+				F.ODBC.Con!rstHDR.Set!LINE_NO("000")
+				F.ODBC.Con!rstHDR.Set!DATE_SHIPPED(V.Local.sDateShipped)
+				F.ODBC.Con!rstHDR.Set!CUSTOMER("TAYLO")
+				F.ODBC.Con!rstHDR.Set!SHIP_ID(V.Local.sShipID)
+				F.ODBC.Con!rstHDR.Set!DATE_ORDER(V.Ambient.Date.FormatMM/DD/YY)
+				F.ODBC.Con!rstHDR.Set!FLAG_CHANGE_BY("Y")
+				F.ODBC.Con!rstHDR.Update
+			F.Intrinsic.Control.endif
+			F.ODBC.Con!rstHDR.Close
+			F.Intrinsic.String.Concat(V.uGlobal.uEDI(v.Local.iCt)!Item,"-",V.uGlobal.uEDI(v.Local.iCt)!ShipTo,V.Local.sPrevPrtShp)
+		F.Intrinsic.Control.EndIf
+		
+		'EDI_Line
+		F.Intrinsic.String.Concat("select * from EDI_LINES where GSS_Part = '",V.uGlobal.uEDI(v.Local.iCt)!Item,"'",V.Local.sSql)
+		F.ODBC.Connection!Con.OpenLocalRecordsetRW("rstLine",V.Local.sSql)
+		
+		F.Intrinsic.Control.If(V.ODBC.Con!rstLine.EOF,=,True)
+			'Set Line Seq
+			F.Intrinsic.Control.If(V.Local.bHeader,=,True)
+				V.Local.iLineSeq.Set(0)
+				V.Local.sLineSeq.Set("000")
+			F.Intrinsic.Control.Else
+				F.Intrinsic.Math.Add(V.Local.iLineSeq,1,V.Local.iLineSeq)
+				F.Intrinsic.String.LPad(V.Local.iLineSeq,"0",3,V.Local.sLineSeq)
+			F.Intrinsic.Control.EndIf
+			'Get Buyer part
+			V.Local.sBuyerPart.Set("")
+			F.Intrinsic.String.Concat("select Customer_Part from INV_CROSS_REF where Part='",V.uGlobal.uEDI(v.Local.iCt)!Item,"' and LTrim(UCase(Customer)) ='TAYLO'",V.Local.sSql)
+			F.ODBC.Connection!Con.OpenLocalRecordsetRO("rstPart",V.Local.sSql)
+			F.Intrinsic.Control.If(V.ODBC.Con!rstPart.EOF,=,False)
+				V.Local.sBuyerPart.Set(V.ODBC.Con!rstPart.FieldVal!Customer_Part)
+			F.Intrinsic.Control.EndIf
+			F.ODBC.Con!rstPart.Close
+			
+			F.ODBC.Con!rstLine.AddNew
+			F.ODBC.Con!rstLine.Set!TRANS("850")
+			F.ODBC.Con!rstLine.Set!BUYER_ID(V.Local.sBuyer)
+			F.ODBC.Con!rstLine.Set!PO_NUM(V.uGlobal.uEDI(v.Local.iCt)!Order)
+			F.ODBC.Con!rstLine.Set!SHIPTO_CODE(V.Local.sShipID)
+			F.ODBC.Con!rstLine.Set!DATE_SHIPPED(V.Local.sDateShipped)
+			F.ODBC.Con!rstLine.Set!HEADER_SEQUENCE("000")
+			F.ODBC.Con!rstLine.Set!LINE_NO(V.Local.sLineSeq)
+			F.ODBC.Con!rstLine.Set!CUSTOMER("TAYLO")
+			F.ODBC.Con!rstLine.Set!SHIP_ID(V.Local.sLoc)
+			F.ODBC.Con!rstLine.Set!FORECAST_FLAG(V.uGlobal.uEDI(v.Local.iCt)!ForecastFlag)
+			F.ODBC.Con!rstLine.Set!FLAG_PLANNED(V.uGlobal.uEDI(v.Local.iCt)!PalnnedFlag)
+			F.ODBC.Con!rstLine.Set!QTY_ORDER("0")
+			F.ODBC.Con!rstLine.Set!BUYER_PART(V.Local.sBuyerPart)
+			F.ODBC.Con!rstLine.Set!DATE_ITEM_PROMISE(V.uGlobal.uEDI(v.Local.iCt)!DelivaryDate)
+			F.ODBC.Con!rstLine.Update
+
+			'EDI_MQD
+			F.Intrinsic.String.Concat("select * from EDI_MQD where Trans = 850 and Buyer_ID = '",V.Local.sBuyer,"' and PO_NUM ='",V.uGlobal.uEDI(v.Local.iCt)!Order,"' and SHIPTO_CODE='",V.Local.sShipID,"' and DATE_SHIPPED='",V.Local.sDateShipped,"' and HEADER_SEQUENCE='000' and LINE_NO='",V.Local.sLineSeq,"' and DUE_DATE='",V.Local.sDateShipped,"' and SEQ='",V.Local.sLineSeq,"'",V.Local.sSql)
+			F.ODBC.Connection!Con.OpenLocalRecordsetRW("rstMQD",V.Local.sSql)
+			F.Intrinsic.Control.If(V.ODBC.Con!rstMQD.EOF,=,True)
+				F.ODBC.Con!rstMQD.AddNew
+				F.ODBC.Con!rstMQD.Set!TRANS("850")
+				F.ODBC.Con!rstMQD.Set!BUYER_ID(V.Local.sBuyer)
+				F.ODBC.Con!rstMQD.Set!PO_NUM(V.uGlobal.uEDI(v.Local.iCt)!Order)
+				F.ODBC.Con!rstMQD.Set!SHIPTO_CODE(V.Local.sShipID)
+				F.ODBC.Con!rstMQD.Set!DATE_SHIPPED(V.Local.sDateShipped)
+				F.ODBC.Con!rstMQD.Set!HEADER_SEQUENCE("000")
+				F.ODBC.Con!rstMQD.Set!LINE_NO(V.Local.sLineSeq)
+				F.ODBC.Con!rstMQD.Set!DUE_DATE(V.Local.sDateShipped)
+				F.ODBC.Con!rstMQD.Set!SEQ(V.Local.sLineSeq)
+				F.Intrinsic.String.Concat(V.uGlobal.uEDI(v.Local.iCt)!Order,"-",V.uGlobal.uEDI(v.Local.iCt)!Line,V.Local.sMQDInfo)
+				F.ODBC.Con!rstMQD.Set!MQD_INFO_30(V.Local.sMQDInfo)
+				F.ODBC.Con!rstMQD.Update
+			F.Intrinsic.Control.endif
+			F.ODBC.Con!rstMQD.Close
+
+			V.Local.bHeader.Set(False)
+		F.Intrinsic.Control.EndIf
+		F.ODBC.Con!rstLine.Close
+	F.Intrinsic.Control.Next(V.Local.iCt)
+
+F.Intrinsic.Control.EndIf
+'F.ODBC.Con!rstHDR.Close
+F.ODBC.Con!rstHDRNew.Close
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Save_To_EDI_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: ATG_EDI_Upload.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.Debug.SetLA(V.Local.sError)
+Function.Intrinsic.Control.EndIf
+
+Program.Sub.Save_To_EDI.End
+
+
